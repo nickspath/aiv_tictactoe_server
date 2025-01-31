@@ -40,25 +40,6 @@ int main(int argc, char const *argv[]) {
     memcpy(pack2 + sizeof(int) * 2, &values2[2], sizeof(int));
     sendto(s, pack2, sizeof(uint32_t) * 3, 0, (SOCKADDR *)&serverAddr, sizeof(serverAddr));
 
-
-    //input for moving in match
-    // while (1) {
-    //     char *value;
-    //     printf("cell > ");
-    //     scanf_s("%s", value);
-    //     printf("%s", value);
-
-    //     char messageMove[2 * 4];
-    //     int value_int;
-    //     sscanf_s(value, "%d", &value_int);
-    //     uint32_t values3[] = {0, 2, value_int};
-    //     for (int i = 0; i < 3; i++) {
-    //         memcpy(messageMove + i * 4, &values[i], sizeof(uint32_t));
-    //     }
-    //     printf("Sending packet: %s", messageMove);
-    //     sendto(s, messageMove, sizeof(uint32_t) * 3, 0, (SOCKADDR *)&serverAddr, sizeof(serverAddr));   //to not do multiple memcpy
-    // }
-
     WSACleanup();
     
     return 0;
