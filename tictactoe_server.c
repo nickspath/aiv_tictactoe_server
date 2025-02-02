@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdint.h>
 
 // clang.exe -o tictactoe_server.exe .\tictactoe_server.c -lws2_32
 
@@ -198,13 +199,14 @@ int ServerStart(server_s *server, char address_p[], int port_p){
 }
 
 void ServerKick(server_s *server, char *sender) {
-    player_s *badPlayer = (player_s *)DictGet(&server->players, sender, sizeof(sender));
-
+    player_s *badPlayer = (player_s *)DictGet(&server->players, sender, strlen(sender));
     if (badPlayer->room) {
         if (&badPlayer->room->owner == badPlayer) {
+            printf("server room destroy\n");
             ServerRoomDestroy(server, badPlayer->room);
         }
         else {
+            printf("dict remove\n");
             DictRemove(&server->players, sender, sizeof(sender));
         }
     }
@@ -222,7 +224,7 @@ void ServerRoomDestroy(server_s *server, room_s *room){
 }
 
 int ServerRoomRemovePlayer(server_s *server, char *sender) {
-    player_s *player = DictGet(&server->players, sender, sizeof(sender));
+    player_s *player = DictGet(&server->players, sender, strlen(sender));
     if (!player->room) {
         DictRemove(&server->players, sender, sizeof(sender));
         printf("Player %s removed\n", player->name);
@@ -252,19 +254,9 @@ int ServerTick(server_s *server){
         return -1;
     }
 
-    char sender[15]; //ipv4 length
-    InetNtop(AF_INET, &server->serverAddr.sin_addr, sender, 15);    //converts address in sockaddr_in to sender
+    char sender[16]; //ipv4 length
+    InetNtop(AF_INET, &server->serverAddr.sin_addr, sender, 16);    //converts address in sockaddr_in to sender
     const int port = ntohs(server->serverAddr.sin_port);
-
-    // Debug
-    if (receivedBytes == 12) {
-        int receivedValues[3];
-        for (int i = 0; i < 3; i++)
-            memcpy(&receivedValues[i], buffer + sizeof(int) * i, sizeof(int));
-        
-        printf("Received: %d, %d, %d", receivedValues[0], receivedValues[1], receivedValues[2]);
-    }
-    printf("\n");
     
     printf("Sender address: %s, port: %d\n", sender, port);
 
@@ -272,17 +264,10 @@ int ServerTick(server_s *server){
         printf("Invalid packet size: %d\n", receivedBytes);
         return -1;
     }
-    // char rid[4], command[4];
-    // memcpy(&rid, &buffer, 4);
-    // memcpy(&command, &buffer + 4, 4);
-    // //char to int
-    // int command_int;
-    // sscanf_s(command, "%d", &command_int);  // string to int
+
     int rid, command;
     memcpy(&rid, buffer, sizeof(int));
     memcpy(&command, buffer + sizeof(int), sizeof(int));
-
-    printf("rid: %d, command: %d, recvBytes: %d\n", rid, command, receivedBytes);
 
     if (command == COMMAND_JOIN && receivedBytes == 28) {
         InetPton(AF_INET, sender, &server->serverAddr.sin_addr);    // sockaddr_in addr to string
@@ -296,9 +281,9 @@ int ServerTick(server_s *server){
         char name[21];
         memcpy(name, buffer + sizeof(int) * 2, sizeof(char) * 20);
         name[20] = '\0';
-        //printf("Name: %s\n", name);
         strcpy_s(player->name, sizeof(name), name);
-        player->room = NULL;
+        player->room = (room_s *)malloc(sizeof(room_s));
+        player->room->roomID = 0;
         player->lastPacketTs = time(NULL);
         DictAdd(&server->players, sender, strlen(sender), player);
         printf("Player %s joined from %s [%d players on server]\n", player->name, // use dictfind instead?
@@ -311,7 +296,7 @@ int ServerTick(server_s *server){
             return -1;
         }
         player_s *player = (player_s *)DictGet(&server->players, sender, strlen(sender));
-        if (player->room) {
+        if (player->room->roomID != 0) {
             printf("Player %s (%s) already has a room\n", sender, player->name);
             return -1;
         }
@@ -320,48 +305,52 @@ int ServerTick(server_s *server){
         player->room->owner = *player;
         RoomReset(player->room);
 
-        char roomCounter_buf[2];
-        snprintf(roomCounter_buf, 2, "%d", server->roomCounter);    //int to string
-        DictAdd(&server->rooms, roomCounter_buf, strlen(roomCounter_buf), player->room);  //if error put in buffer
-        printf("Room %d for player %s (%s) created\n", player->room->roomID, sender, player->name);
+        char *roomCounter_buf = malloc((sizeof(char) * 11) + 1);
+        sprintf(roomCounter_buf, "%u", server->roomCounter);    // int to string for dict key
+
+        DictAdd(&server->rooms, roomCounter_buf, strlen(roomCounter_buf), player->room);
+        printf("Room %s for player %s (%s) created\n", roomCounter_buf, sender, player->name);
         server->roomCounter++;
         player->lastPacketTs = time(NULL);
-        return 1;
+        return 0;
     }
     else if (command == COMMAND_CHALLENGE && receivedBytes == 12) {
         if (!DictGet(&server->players, sender, strlen(sender))) {
             printf("Unknown player %s\n", sender);
             return -1;
         }
-        player_s *player = (player_s *)DictGet(&server->players,
-            sender, strlen(sender));
-        if (player->room) {
-            printf("Player %s (%s) already in a room\n", sender, player->name);
+        player_s *player = (player_s *)DictGet(&server->players, sender, strlen(sender));
+        // if (player->room->roomID != 0) {                                                     //RE ENABLE
+        //     printf("Player %s (%s) already in a room\n", sender, player->name);
+        //     return -1;
+        // }
+        uint32_t roomCounter_int = 0;
+        memcpy(&roomCounter_int, buffer + sizeof(uint32_t) * 2, sizeof(uint32_t));
+
+        char *roomCounter_buf = malloc((sizeof(char) * 11) + 1);
+        sprintf(roomCounter_buf, "%u", roomCounter_int);
+        if (!DictGet(&server->rooms, roomCounter_buf, strlen(roomCounter_buf))) {
+            printf("Unknown room %s\n", roomCounter_buf);
             return -1;
         }
-        char *roomID_str;
-        memcpy(roomID_str, &buffer + 8, 4);
-        if (!DictGet(&server->rooms, roomID_str, strlen(roomID_str))) {
-            printf("Unknown room %s\n", roomID_str);
-            return -1;
-        }
-        room_s *room = (room_s *)DictGet(&server->rooms, roomID_str, strlen(roomID_str));
+        printf("after!!!!\n");
+        room_s *room = (room_s *)DictGet(&server->rooms, roomCounter_buf, strlen(roomCounter_buf));
         if (!RoomIsDoorOpen(room)) {
-            printf("Room %s is closed!\n", roomID_str);
+            printf("Room %s is closed!\n", roomCounter_buf);
             return -1;
         }
         room->challenger = *player;
         player->room = room;
         player->lastPacketTs = time(NULL);
-        printf("Game on room %s started!\n", roomID_str);
+        printf("Game on room %s started!\n", roomCounter_buf);
         return 0;
     }
     else if (command == COMMAND_MOVE && receivedBytes == 12) {
-        if (!DictGet(&server->players, sender, sizeof(sender))) {
+        if (!DictGet(&server->players, sender, strlen(sender))) {
             printf("Uknown player %s\n", sender);
             return -1;
         }
-        player_s *player = DictGet(&server->players, sender, sizeof(sender));
+        player_s *player = DictGet(&server->players, sender, strlen(sender));
         if (!player->room) {
             printf("Player %s (%s) is not in a room\n", sender, player->name);
             return -1;
@@ -381,7 +370,7 @@ int ServerTick(server_s *server){
         }
     }
     else if (command == COMMAND_QUIT) {
-        if (!DictGet(&server->players, sender, sizeof(sender))) {
+        if (!DictGet(&server->players, sender, strlen(sender))) {
             printf("Unknown player %s\n", sender);
             return -1;
         }
@@ -472,7 +461,7 @@ int ServerCheckDeadPeers(server_s *server){
     }
 
     for (size_t i = 0; i < deadPlayersCount; i++) {
-        printf("Remoing %s for inactivity...\n", deadPlayers[i]->name);
+        printf("Removing %s for inactivity...\n", deadPlayers[i]->name);
         ServerRoomRemovePlayer(server, deadPlayers[i]->name);
     }
 
@@ -493,7 +482,7 @@ void ServerClose(server_s *server) {
     WSACleanup();
 }
 
-int main(int argc, char const *argv[]) {
+int main() {
     server_s server;
 
     ServerInitialize(&server);

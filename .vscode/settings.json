@@ -1,0 +1,5 @@
+{
+    "files.associations": {
+        "tictactoe_client_gui.h": "c"
+    }
+}

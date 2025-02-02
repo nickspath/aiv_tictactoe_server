@@ -1,13 +1,14 @@
 #include "dictionary.h"
 #include <WinSock2.h>
+#include <stdint.h>
 
 typedef struct Player player_s;
 typedef struct Room room_s;
 
 enum playerType {
+    None,
     Owner,
-    Challenger,
-    None
+    Challenger
 };
 
 typedef struct Player {
@@ -28,9 +29,9 @@ typedef struct Room {
 } room_s;
 
 typedef struct Server {
-    struct dict players;
+    struct dict players;    // dictionary of players in the server
     struct dict rooms;
-    int roomCounter;
+    uint32_t roomCounter;
     WSADATA wsaData;
     SOCKET socket;
     struct sockaddr_in serverAddr;

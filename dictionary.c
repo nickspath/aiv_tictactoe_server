@@ -29,8 +29,8 @@ dictNode_s *DictAdd(dict_s *table, const char *key, size_t keyLen, void *value) 
     size_t hash = djb33x_hash(key, keyLen);
     size_t index = hash % table->hashmapSize;
 
-    dictNode_s *head = table->nodes[index];   //get pointer of interested memory bloc
-    while (head) {  // scroll through all the nodes
+    dictNode_s *head = table->nodes[index];   //get pointer of interested memory block
+    while (head) {  // scroll through all the nodes  in the same index
         // If the key already exists, update the value
         if (keyLen == head->keyLen && strncmp(key, head->key, keyLen) == 0) {
             head->value = value;
@@ -47,9 +47,9 @@ dictNode_s *DictAdd(dict_s *table, const char *key, size_t keyLen, void *value) 
     new_item->key = key;
     new_item->keyLen = keyLen;
     new_item->value = value;
-    new_item->next = table->nodes[index];   // for same nodes in the same hasmap table index
+    new_item->next = table->nodes[index];   // to be connected with the same other nodes in that index
     table->nodes[index] = new_item;
-
+    printf("-ADD key: %s key_len: %zu index: %zu pointer: %p\n", table->nodes[index]->key, table->nodes[index]->keyLen, index, table->nodes[index]->key);
     return new_item;
 }
 
@@ -58,6 +58,9 @@ void *DictGet(dict_s *table, const char *key, size_t keyLen) {
     size_t index = hash % table->hashmapSize;
 
     dictNode_s *head = table->nodes[index];
+    if (head) {
+        printf("-GET key: %s key_len: %zu index: %zu pointer: %p\n", table->nodes[index]->key, table->nodes[index]->keyLen, index, table->nodes[index]->key);
+    }
     while (head) {
         if (keyLen == head->keyLen && strncmp(key, head->key, keyLen) == 0) {
             return head->value;
@@ -121,34 +124,3 @@ void DictDealloc(dict_s *table) {
 
     printf("%d", count);
 }
-
-// int main(int argc, char const *argv[])
-// {
-//     dict_s *dict = DictInit(16);
-
-//     char *key1 = "name";
-//     char *value1 = "Alice";
-//     DictAdd(dict, key1, strlen(key1), value1);
-
-//     char *key2 = "age";
-//     int value2 = 25;
-//     DictAdd(dict, key2, strlen(key2), &value2);
-
-//     char *name = (char *)set_get(dict, "name", strlen("name"));
-//     int *age = (int *)set_get(dict, "age", strlen("age"));
-
-//     if (name)    
-//         printf("Name: %s\n", name);
-//     if (age)
-//         printf("Age: %d\n", *age);
-
-//     set_remove(dict, "name", strlen("name"));
-//     name = (char *)set_get(dict, "name", strlen("name"));
-//     if (!name)
-//         printf("Key 'name' was removed\n");
-
-//     free(dict->nodes);
-//     free(dict);
-
-//     return 0;
-// }
