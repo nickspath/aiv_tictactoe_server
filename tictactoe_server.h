@@ -16,7 +16,7 @@ typedef struct Player {
     char name[20 + 1];
     room_s *room;
     float lastPacketTs;
-    int address;
+    char address[16];
 } player_s;
 
 typedef struct Room {
@@ -32,9 +32,10 @@ typedef struct Server {
     struct dict players;    // dictionary of players in the server
     struct dict rooms;
     uint32_t roomCounter;
+    size_t playersCounter;
     WSADATA wsaData;
     SOCKET socket;
-    struct sockaddr_in serverAddr;
+    struct sockaddr_in sockAddr;
 } server_s;
 
 char* PrintSymbol(room_s *room, int cellN);
@@ -56,6 +57,12 @@ int RoomMove(room_s *room, enum playerType player, int cellN);
 void ServerInitialize(server_s *server);
 
 int ServerStart(server_s *server, char address_p[], int port_p);
+
+void ServerAnnounces(server_s *server);
+
+void BroadCastRoomStart(server_s *server, room_s *room);
+
+void BroadCastPlayField(server_s *server, room_s *room, char playField[9]);
 
 void ServerKick(server_s *server, char *sender);
 

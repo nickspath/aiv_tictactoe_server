@@ -15,17 +15,16 @@
 #define COMMAND_QUIT 3
 #define COMMAND_CREATE_ROOM 4
 #define COMMAND_ANNOUNCE_ROOM 5
+#define COMMAND_GAME_STARTED 6
+#define COMMAND_ANNOUNCE_PLAYFIELD 7
 
 int RoomIsDoorOpen(room_s *room) {
-    if (room->challenger.address != 0)
-        return 0;
-    else
-        return -1;
+    return strcmp(room->challenger.address, "");
 }
 
 int RoomHasStarted(room_s *room){
     for (size_t i = 0; i < 9; i++) {
-        if (room->playField[i].address != 0) {
+        if (strcmp(room->playField[i].address, "") != 0) {
             return 0;
         }
     }
@@ -47,7 +46,7 @@ char* PrintSymbol(room_s *room, int cellN){
 void RoomPrintPlayField(room_s *room){
     printf("|%s|%s|%s|\n", PrintSymbol(room, 0), PrintSymbol(room, 1), PrintSymbol(room, 2));
     printf("|%s|%s|%s|\n", PrintSymbol(room, 3), PrintSymbol(room, 4), PrintSymbol(room, 5));
-    printf("|%s|%s|%s|", PrintSymbol(room, 6), PrintSymbol(room, 7), PrintSymbol(room, 8));
+    printf("|%s|%s|%s|\n", PrintSymbol(room, 6), PrintSymbol(room, 7), PrintSymbol(room, 8));
 }
 
 void RoomReset(room_s *room){
@@ -128,33 +127,58 @@ enum playerType RoomCheckVictory(room_s *room){
 }
 
 int RoomMove(room_s *room, enum playerType player, int cellN){
-    if (cellN < 0 || cellN > 8)
+    if (cellN < 0 || cellN > 8) {
+        printf("cell number too little or too big\n");
         return -1;
-    if (room->playField[cellN].playerType != None)
+    }
+    if (room->playField[cellN].playerType != None) {
+        printf("move where it's already set!\n");
         return -1;
-    if (room->winner.playerType != None)
+    }
+    if (room->winner.playerType != None) {
+        printf("winner is set\n");
         return -1;
-    if (room->challenger.playerType == None)
+    }
+    if (room->challenger.playerType == None) {
+        printf("challenger is not set\n");
         return -1;
-    if (player != room->owner.playerType && player != room->challenger.playerType)
+    }
+    if (player != room->owner.playerType && player != room->challenger.playerType) {
+        printf("if player is not owner and is not not challenger\n");
         return -1;
-    if (player != room->turn.playerType)
+    }
+    if (player != room->turn.playerType) {
+        printf("if it's not the player's turn\n");
         return -1;
+    }
+    printf("turn: %d\n", (int)room->turn.playerType);
+    printf("owner: %d\n", (int)room->owner.playerType);
+    printf("challenger: %d\n", (int)room->challenger.playerType);
     room->playField[cellN].playerType = player;
     room->winner.playerType = RoomCheckVictory(room);
-    if (room->turn.playerType == room->owner.playerType)
+    if (room->turn.playerType == room->owner.playerType) {
         room->turn.playerType = room->challenger.playerType;
-    else
+        printf("turn after switch: %d\n", (int)room->turn.playerType);
+    }
+    else {
         room->turn.playerType = room->owner.playerType;
+        printf("turn after switch: %d\n", (int)room->turn.playerType);
+    }
     return 0;
 }
 
 void ServerInitialize(server_s *server){
     server->roomCounter = 100;
+    server->playersCounter = 0;
 
     server->players = *DictInit(server->roomCounter);
     server->rooms = *DictInit(server->roomCounter);
     // maybe check for mem alloc integrity
+    
+    unsigned long nb_mode = 1;
+    int iResult = ioctlsocket(server->socket, FIONBIO, &nb_mode);
+    const unsigned int timeout = 3;
+    setsockopt(server->socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(unsigned int));
 }
 
 int ServerStart(server_s *server, char address_p[], int port_p){
@@ -177,15 +201,16 @@ int ServerStart(server_s *server, char address_p[], int port_p){
     // timeout
 
     // Configure Server Address
-    server->serverAddr.sin_family = AF_INET;
-    server->serverAddr.sin_port = htons(port_p);    // convert host to network byte order
-    if (InetPton(AF_INET, address_p, &server->serverAddr.sin_addr) != 1) {
+    struct sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port_p);    // convert host to network byte order
+    if (InetPton(AF_INET, address_p, &serverAddr.sin_addr) != 1) {
         printf("Invalid address or address not supported\n");
         return -1;
     }
 
     // Bind The Socket
-    result = bind(server->socket, (struct sockaddr*)&server->serverAddr, sizeof(server->serverAddr));
+    result = bind(server->socket, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
     if (result == SOCKET_ERROR) {
         printf("Bind failed: %d\n", WSAGetLastError());
         closesocket(server->socket);
@@ -244,19 +269,19 @@ int ServerRoomRemovePlayer(server_s *server, char *sender) {
 
 int ServerTick(server_s *server){
     #define BUFFER_SIZE 64
-    socklen_t addr_len = sizeof(server->serverAddr);
+    socklen_t addr_len = sizeof(server->sockAddr);
     char buffer[BUFFER_SIZE];
 
     int receivedBytes = recvfrom(server->socket, buffer, BUFFER_SIZE, 0,
-                                    (struct sockaddr *)&server->serverAddr, &addr_len);
+                                    (struct sockaddr *)&server->sockAddr, &addr_len);
     if (receivedBytes < 0) {
         printf("Recvfrom error\n");
         return -1;
     }
 
     char sender[16]; //ipv4 length
-    InetNtop(AF_INET, &server->serverAddr.sin_addr, sender, 16);    //converts address in sockaddr_in to sender
-    const int port = ntohs(server->serverAddr.sin_port);
+    InetNtop(AF_INET, &server->sockAddr.sin_addr, sender, 16);    //converts address in sockaddr_in to sender
+    const int port = ntohs(server->sockAddr.sin_port);
     
     printf("Sender address: %s, port: %d\n", sender, port);
 
@@ -270,14 +295,16 @@ int ServerTick(server_s *server){
     memcpy(&command, buffer + sizeof(int), sizeof(int));
 
     if (command == COMMAND_JOIN && receivedBytes == 28) {
-        InetPton(AF_INET, sender, &server->serverAddr.sin_addr);    // sockaddr_in addr to string
+        InetNtop(AF_INET, &server->sockAddr.sin_addr, sender, sizeof(sender));    // sockaddr_in addr to string
         if (DictGet(&server->players, sender, strlen(sender))) {
             printf("%s has already joined!\n", sender);
             ServerKick(server, sender);
             return -1;
         }
+        server->playersCounter++;
         //initialize player
         player_s *player = malloc(sizeof(player_s));
+        strcpy_s(player->address, sizeof(sender), sender);
         char name[21];
         memcpy(name, buffer + sizeof(int) * 2, sizeof(char) * 20);
         name[20] = '\0';
@@ -300,6 +327,7 @@ int ServerTick(server_s *server){
             printf("Player %s (%s) already has a room\n", sender, player->name);
             return -1;
         }
+        player->playerType = Owner;
         player->room = (room_s *)malloc(sizeof(room_s));
         player->room->roomID = server->roomCounter;
         player->room->owner = *player;
@@ -320,12 +348,12 @@ int ServerTick(server_s *server){
             return -1;
         }
         player_s *player = (player_s *)DictGet(&server->players, sender, strlen(sender));
-        // if (player->room->roomID != 0) {                                                     //RE ENABLE
-        //     printf("Player %s (%s) already in a room\n", sender, player->name);
-        //     return -1;
-        // }
-        uint32_t roomCounter_int = 0;
-        memcpy(&roomCounter_int, buffer + sizeof(uint32_t) * 2, sizeof(uint32_t));
+        if (player->room->roomID != 0) {                                                     //RE ENABLE
+            printf("Player %s (%s) already in a room\n", sender, player->name);
+            return -1;
+        }
+        int roomCounter_int = 0;
+        memcpy(&roomCounter_int, buffer + sizeof(int) * 2, sizeof(int));
 
         char *roomCounter_buf = malloc((sizeof(char) * 11) + 1);
         sprintf(roomCounter_buf, "%u", roomCounter_int);
@@ -333,16 +361,19 @@ int ServerTick(server_s *server){
             printf("Unknown room %s\n", roomCounter_buf);
             return -1;
         }
-        printf("after!!!!\n");
         room_s *room = (room_s *)DictGet(&server->rooms, roomCounter_buf, strlen(roomCounter_buf));
-        if (!RoomIsDoorOpen(room)) {
+        if (RoomIsDoorOpen(room) != 0) {
             printf("Room %s is closed!\n", roomCounter_buf);
             return -1;
         }
-        room->challenger = *player;
+        //room->challenger = *player;
         player->room = room;
         player->lastPacketTs = time(NULL);
+        player->playerType = Challenger;
+        player->room->challenger = *player;
+        player->room->turn.playerType = Challenger;
         printf("Game on room %s started!\n", roomCounter_buf);
+        BroadCastRoomStart(server, room);
         return 0;
     }
     else if (command == COMMAND_MOVE && receivedBytes == 12) {
@@ -356,13 +387,24 @@ int ServerTick(server_s *server){
             return -1;
         }
         int cell;
-        memcpy(&cell, &buffer + 8, 4);
-        if (!RoomMove(player->room, player->playerType, cell)) {  // fix room move
+        memcpy(&cell, buffer + sizeof(int) * 2, sizeof(int));
+        if (RoomMove(player->room, player->playerType, cell) == -1) {  // fix room move
             printf("Player %s did an invalid move\n", player->name);
             return -1;
         }
         player->lastPacketTs = time(NULL);
         RoomPrintPlayField(player->room);
+        char playFieldc[9];
+        for (size_t i = 0; i < 9; i++) {
+            if ((int)player->room->playField[i].playerType == 1)
+                playFieldc[i] = 'O';
+            else if ((int)player->room->playField[i].playerType == 2)
+                playFieldc[i] = 'X';
+            else
+                playFieldc[i] = ' ';
+        }
+        
+        BroadCastPlayField(server, player->room, playFieldc);
         if (player->room->winner.playerType != None) {
             printf("Player %s did WON!\n", player->room->winner.name);
             RoomReset(player->room);
@@ -381,7 +423,6 @@ int ServerTick(server_s *server){
         printf("Unknown command from %s\n", sender);
         return -1;
     }
-    printf("Boh\n");
     return -1;
 }
 
@@ -394,8 +435,8 @@ void ServerAnnounces(server_s *server){
             dictNode_s *nextNode = node->next;
 
             room_s *room = (room_s *)node->value;
-            if (RoomIsDoorOpen(room)) {
-                room_s **temp = calloc(roomsCount++, sizeof(room_s));
+            if (RoomIsDoorOpen(room) == 0) {
+                room_s **temp = calloc(roomsCount, sizeof(room_s));
                 if (!temp) {
                     printf("Memory allocation failed\n");
                     free(rooms);
@@ -407,33 +448,71 @@ void ServerAnnounces(server_s *server){
             node = nextNode;
         }
     }
-    for (int i = 0; i < server->players.hashmapSize; i++) {
-        dictNode_s *node = server->players.nodes[i];
-        int count = 0;
-        while (node) {
-            dictNode_s *nextNode = node->next;
+    if (roomsCount > 0) {
+        for (int i = 0; i < server->players.hashmapSize; i++) {
+            dictNode_s *node = server->players.nodes[i];
+            int count = 0;
+            while (node) {
+                dictNode_s *nextNode = node->next;
 
-            player_s *player = (player_s *)node->value;
-            if (player->room) {
-                break;
+                player_s *player = (player_s *)node->value;     // cycles through every player
+                if (player->room->roomID != 0)
+                    break;                
+                for (int i = 0; i < roomsCount; i++) {
+                    printf("Announcing room %d to player %s\n", rooms[i]->roomID, player->name);
+                    char packet[sizeof(int) * 3];
+                    int values[] = {0, COMMAND_ANNOUNCE_ROOM, rooms[i]->roomID};
+                    for (int i = 0; i < 3; i++)
+                        memcpy(packet + sizeof(int) * i, &values[i], sizeof(int));
+
+                    //once found a player without a room, send it the infos about the available rooms
+                    InetPton(AF_INET, player->address, &server->sockAddr.sin_addr);
+                    server->sockAddr.sin_port = htons(5621);
+                    sendto(server->socket, packet, sizeof(int) * 3, 0, (SOCKADDR *)&server->sockAddr, sizeof(server->sockAddr));
+                    // char address[16] = "";
+                    // InetNtop(AF_INET, &server->sockAddr.sin_addr, address, sizeof(address));
+                    // printf("send to address %s\n", address);
+                }
+                node = nextNode;
+                count++;
             }
-            for (int i = 0; i < roomsCount; i++) {
-                printf("Announcing room %d to player %s\n", 
-                    ((room_s *)node->value)->roomID, player->name);
-                char packet[3 * 4];
-                int values[] = {0, COMMAND_ANNOUNCE_ROOM, ((room_s *)node->value)->roomID};
-                for (int i = 0; i < 3; i++)
-                    memcpy(packet, &values[i] + sizeof(int) * i, sizeof(int));
-
-                sendto(server->socket, packet, sizeof(int) * 3, 0,
-                    (SOCKADDR *)&server->serverAddr, sizeof(server->serverAddr));
-            }
-
-            node = nextNode;
-            printf("%p\n", node);
-            count++;
         }
     }
+}
+
+//TO REDO//
+void BroadCastRoomStart(server_s *server, room_s *room) {
+    printf("room owner: %s room challenger: %s\n", room->owner.name, room->challenger.name);
+    //owner
+    char packet[sizeof(int) * 2];   //rid and command
+    int values[] = {0, COMMAND_GAME_STARTED};
+    memcpy(packet, &values[0], sizeof(int));
+    memcpy(packet + sizeof(int), &values[1], sizeof(int));
+    InetPton(AF_INET, room->owner.address, &server->sockAddr.sin_addr);
+    server->sockAddr.sin_port = htons(5621);
+    sendto(server->socket, packet, sizeof(int) * 2, 0, (SOCKADDR *)&server->sockAddr, sizeof(server->sockAddr));
+    //challenger
+    InetPton(AF_INET, room->challenger.address, &server->sockAddr.sin_addr);
+    sendto(server->socket, packet, sizeof(int) * 2, 0, (SOCKADDR *)&server->sockAddr, sizeof(server->sockAddr));
+}
+
+void BroadCastPlayField(server_s *server, room_s *room, char playField[9]) {
+    printf("Sending playfield info...\n");
+
+    char packet[sizeof(int) * 2 + sizeof(char) * 9];
+    int values[] = {0, COMMAND_ANNOUNCE_PLAYFIELD};
+    memcpy(packet, &values[0], sizeof(int));
+    memcpy(packet + sizeof(int), &values[1], sizeof(int));
+    for (int i = 0; i < 9; i++) {
+        memcpy(packet + sizeof(int) * 2 + sizeof(char) * i, &playField[i], sizeof(char));
+    }
+    
+    InetPton(AF_INET, room->owner.address, &server->sockAddr.sin_addr);
+    server->sockAddr.sin_port = htons(5621);
+    sendto(server->socket, packet, sizeof(int) * 2 + sizeof(char) * 9, 0, (SOCKADDR *)&server->sockAddr, sizeof(server->sockAddr));
+
+    InetPton(AF_INET, room->challenger.address, &server->sockAddr.sin_addr);
+    sendto(server->socket, packet, sizeof(int) * 2 + sizeof(char) * 9, 0, (SOCKADDR *)&server->sockAddr, sizeof(server->sockAddr));
 }
 
 int ServerCheckDeadPeers(server_s *server){
@@ -492,3 +571,5 @@ int main() {
 
     return 0;
 }
+
+//inetntop to string

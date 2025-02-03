@@ -49,7 +49,6 @@ dictNode_s *DictAdd(dict_s *table, const char *key, size_t keyLen, void *value) 
     new_item->value = value;
     new_item->next = table->nodes[index];   // to be connected with the same other nodes in that index
     table->nodes[index] = new_item;
-    printf("-ADD key: %s key_len: %zu index: %zu pointer: %p\n", table->nodes[index]->key, table->nodes[index]->keyLen, index, table->nodes[index]->key);
     return new_item;
 }
 
@@ -58,9 +57,6 @@ void *DictGet(dict_s *table, const char *key, size_t keyLen) {
     size_t index = hash % table->hashmapSize;
 
     dictNode_s *head = table->nodes[index];
-    if (head) {
-        printf("-GET key: %s key_len: %zu index: %zu pointer: %p\n", table->nodes[index]->key, table->nodes[index]->keyLen, index, table->nodes[index]->key);
-    }
     while (head) {
         if (keyLen == head->keyLen && strncmp(key, head->key, keyLen) == 0) {
             return head->value;
@@ -121,6 +117,4 @@ void DictDealloc(dict_s *table) {
     }
     free(table->nodes);
     free(table);
-
-    printf("%d", count);
 }
