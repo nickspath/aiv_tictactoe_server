@@ -171,6 +171,13 @@ void ServerInitialize(server_s *server){
     server->roomCounter = 100;
     server->playersCounter = 0;
 
+    // Initialize Winsock
+    int result = WSAStartup(MAKEWORD(2, 2), &server->wsaData) != 0;     //makeword(2, 2) creates a word for required parameter WORD versionRequired
+    if (result) {
+        printf("WSAStartup failed: %d\n", result);
+        WSACleanup();
+    }
+
     server->players = *DictInit(server->roomCounter);
     server->rooms = *DictInit(server->roomCounter);
     // maybe check for mem alloc integrity
@@ -181,15 +188,8 @@ void ServerInitialize(server_s *server){
     setsockopt(server->socket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(unsigned int));
 }
 
-int ServerStart(server_s *server, char address_p[], int port_p){
+int ServerStart(server_s *server, const char address_p[], const int port_p){
     int result;
-    
-    // Initialize Winsock
-    result = WSAStartup(MAKEWORD(2, 2), &server->wsaData);    //makeword(2, 2) creates a word for required parameter WORD versionRequired
-    if (result != 0){
-        printf("WSAStartup failed: %d\n", result);
-        return -1;
-    }
 
     // Create socket
     server->socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -561,14 +561,60 @@ void ServerClose(server_s *server) {
     WSACleanup();
 }
 
-int main() {
+char *GetLocalIPAddress() {
+    char hostname[1024];
+    struct addrinfo hints, *res;
+    char *ip_address = malloc(sizeof(char) * INET_ADDRSTRLEN);
+    struct hostent *host_info;
+    if (gethostname(hostname, sizeof(hostname)) == SOCKET_ERROR) {
+        fprintf(stderr, "Get hostname failed: %d\n", WSAGetLastError());
+        WSACleanup();
+        return NULL;
+    }
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    if (getaddrinfo(hostname, NULL, &hints, &res) != 0) {
+        fprintf(stderr, "GetAddrInfoW failed: %d\n", WSAGetLastError());
+        WSACleanup();
+        return NULL;
+    }
+
+    for (struct addrinfo *p = res; p != NULL; p = p->ai_next) {
+        void *addr;
+
+        struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+        addr = &(ipv4->sin_addr);
+
+        InetNtop(AF_INET, addr, ip_address, INET_ADDRSTRLEN);
+
+        if (strstr(ip_address, "192.168") != NULL){
+            return ip_address;
+        }
+    }
+
+    // Free the linked list
+    freeaddrinfo(res);
+
+    return NULL;
+}
+
+int main(int argc, char const *argv[]) {
     server_s server;
 
     ServerInitialize(&server);
-    ServerStart(&server, "192.168.1.200", 3621);
+    const char *address;
+    if (argc > 1) {
+        address = argv[1];
+    }
+    else {
+        address = GetLocalIPAddress();
+    }
+    printf("%s\n", address);
+    ServerStart(&server, address, 3621);
     ServerRun(&server);
     ServerClose(&server);
-
     return 0;
 }
 

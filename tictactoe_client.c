@@ -13,14 +13,18 @@ typedef struct SocketStuff {
 
 socketStuff_s socketStuff;
 
-int InitSock(response_s *response) {
+void InitSock() {
     int iResult = 0;
     WSADATA WSAData;
     iResult = WSAStartup(MAKEWORD(2, 2), &WSAData);
     if (iResult != 0) {
         printf("Error at WSAStartup(): %d\n", WSAGetLastError());
-        return -1;
     }
+    socketStuff.WSAData = WSAData;
+}
+
+int StartSock(response_s *response, const char* address) {
+    int iResult = 0;
     
     SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (s == INVALID_SOCKET) {
@@ -29,7 +33,7 @@ int InitSock(response_s *response) {
     }
 
     struct sockaddr_in serverAddr;
-    InetPton(AF_INET, "192.168.1.200", &serverAddr.sin_addr); //set address
+    InetPton(AF_INET, address, &serverAddr.sin_addr); //set address
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(3621);  // set port
 
@@ -56,7 +60,6 @@ int InitSock(response_s *response) {
         return -1;
     }
 
-    socketStuff.WSAData = WSAData;
     socketStuff.s = s;
     socketStuff.serverAddr = serverAddr;
     socketStuff.clientAddr = clientAddr;
@@ -213,11 +216,6 @@ void CloseAndExit() {
     WSACleanup();
 }
 
-//receive rooms announcement
-//available rooms in gui
-//different screens
-//move input in room screen
-// RECEIVE SHIT
 // FREE ALL THE MALLOC
 
 //send to only server ip, receive from any (it will just be server since it knows from send address)

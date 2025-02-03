@@ -9,7 +9,14 @@
 int main(int argc, char const *argv[])
 {
     response_s response;
-    InitSock(&response);
+    InitSock();
+    const char *address;
+    if (argc > 1)
+        address = argv[1];
+    else
+        address = GetLocalIPAddress();
+    printf("%s\n", address);
+    StartSock(&response, address);
 
     const int screenWidth = 800;
     const int screenHeight = 450;

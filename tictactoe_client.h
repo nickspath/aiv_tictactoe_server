@@ -10,7 +10,9 @@ typedef struct Response {
     int scene;  // 0 main, 1 game
 } response_s;
 
-int InitSock(response_s *response);
+void InitSock();
+
+int StartSock(response_s *response, const char *address);
 
 int Join(char *name_i);
 

@@ -56,7 +56,7 @@ int RoomMove(room_s *room, enum playerType player, int cellN);
 
 void ServerInitialize(server_s *server);
 
-int ServerStart(server_s *server, char address_p[], int port_p);
+int ServerStart(server_s *server, const char address_p[], const int port_p);
 
 void ServerAnnounces(server_s *server);
 
@@ -69,3 +69,5 @@ void ServerKick(server_s *server, char *sender);
 void ServerRoomDestroy(server_s *server, room_s* room);
 
 int ServerRoomRemovePlayer(server_s *server, char *sender);
+
+char *GetLocalIPAddress();
